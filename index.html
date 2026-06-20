@@ -110,10 +110,23 @@
   textarea:focus { outline: none; border-color: var(--accent); }
 
   .footer { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; gap: 10px; }
+  .btns { display: flex; gap: 8px; }
   .saved { font-size: .72rem; color: var(--muted); }
   .reset { border: 1px solid var(--line); background: #fff; color: var(--muted); padding: 9px 14px; border-radius: 10px; font-size: .8rem; cursor: pointer; font-weight: 550; }
   .reset:active { transform: scale(.96); }
   .reset.confirm { color: #c0392b; border-color: #e8c4bd; background: #fdf2f0; }
+  .reset.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  /* export modal */
+  .modal { position: fixed; inset: 0; background: rgba(46,42,38,.4); display: none; align-items: center; justify-content: center; padding: 18px; z-index: 50; }
+  .sheet { background: var(--card); border-radius: 16px; box-shadow: var(--shadow); width: 100%; max-width: 380px; max-height: 80vh; overflow: auto; padding: 18px; }
+  .sheet h2 { font-size: 1.05rem; margin: 0 0 4px; }
+  .sheet .sub2 { font-size: .78rem; color: var(--muted); margin: 0 0 12px; }
+  .wkrow { display: flex; align-items: center; gap: 10px; padding: 10px 4px; border-bottom: 1px solid var(--line); font-size: .88rem; cursor: pointer; }
+  .wkrow input { width: 18px; height: 18px; accent-color: var(--accent); }
+  .thistag { font-size: .62rem; color: var(--accent); background: var(--accent-soft); border-radius: 6px; padding: 2px 6px; }
+  .sheetbtns { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 14px; }
+  .selall { border: none; background: none; color: var(--accent); font-size: .8rem; font-weight: 600; cursor: pointer; padding: 4px; }
 
   /* editor */
   .editor { padding: 12px; }
@@ -168,7 +181,25 @@
 
   <div class="footer">
     <span class="saved" id="saved">All changes saved</span>
-    <button class="reset" id="reset">Reset week</button>
+    <span class="btns">
+      <button class="reset" id="export">⤓ Export</button>
+      <button class="reset" id="reset">Reset week</button>
+    </span>
+  </div>
+
+  <div class="modal" id="exportModal">
+    <div class="sheet">
+      <h2>Export which weeks?</h2>
+      <p class="sub2">Choose the weeks to include, then send the file to your Mac.</p>
+      <div id="wklist"></div>
+      <div class="sheetbtns">
+        <button class="selall" id="expAll">Select none</button>
+        <span class="btns">
+          <button class="reset" id="expCancel">Cancel</button>
+          <button class="reset primary" id="expGo">Export</button>
+        </span>
+      </div>
+    </div>
   </div>
 
 <script>
@@ -336,6 +367,79 @@
     document.getElementById("legend").style.display = (!editing && data.habits.some(function(h){return h.type==="eat";}))?"flex":"none";
     this.textContent = editing? "✓ Done" : "✎ Edit habits";
     if (editing) renderEditor(); else render();
+  });
+
+  // ---- export to CSV (AirDrop / email to Mac) ----
+  function csvCell(s){ s=String(s==null?"":s); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }
+  function fmtVal(habit,v){ if(v==null||v==="") return ""; if(habit.type==="check") return v===true?"Y":""; return v; }
+  function parseWk(wk){ var p=wk.split("-"); return new Date(+p[0], +p[1]-1, +p[2]); }
+  function rangeLabel(wk){
+    var s=parseWk(wk), e=addDays(s,6), sm=s.getMonth()===e.getMonth();
+    return MONTHS[s.getMonth()]+" "+s.getDate()+" – "+(sm?"":MONTHS[e.getMonth()]+" ")+e.getDate()+", "+e.getFullYear();
+  }
+  function weeksWithData(){
+    return Object.keys(data.weeks).filter(function(wk){
+      var wd=data.weeks[wk]; return (wd.values&&Object.keys(wd.values).length) || (wd.notes&&wd.notes.trim());
+    }).sort();
+  }
+  function buildCSV(selected){
+    var set={}; selected.forEach(function(w){set[w]=1;});
+    var wks = weeksWithData().filter(function(w){return set[w];});
+    var rows = [["Week starting","Habit","Mon","Tue","Wed","Thu","Fri","Sat","Sun"]];
+    wks.forEach(function(wk){
+      var vals = data.weeks[wk].values||{};
+      data.habits.forEach(function(h){
+        var row=[wk,h.name];
+        for(var d=0; d<7; d++){ row.push(fmtVal(h, vals[h.id+"_"+d])); }
+        rows.push(row);
+      });
+    });
+    rows.push([]); rows.push(["Week starting","Weekly reflection"]);
+    wks.forEach(function(wk){ var n=(data.weeks[wk].notes||"").trim(); if(n) rows.push([wk,n]); });
+    return rows.map(function(r){ return r.map(csvCell).join(","); }).join("\n");
+  }
+  function deliverCSV(csv){
+    var fname = "habit-tracker-"+key(new Date())+".csv";
+    try {
+      var file = new File([csv], fname, {type:"text/csv"});
+      if(navigator.canShare && navigator.canShare({files:[file]})){ navigator.share({files:[file], title:"Habit Tracker data"}).catch(function(){}); return; }
+    } catch(e){}
+    var blob = new Blob([csv], {type:"text/csv"});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a"); a.href=url; a.download=fname; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  }
+
+  var modal = document.getElementById("exportModal");
+  function openExport(){
+    var wks = weeksWithData();
+    var list = document.getElementById("wklist");
+    if(!wks.length){ list.innerHTML = '<p class="ehint" style="margin:0">No data logged yet — nothing to export.</p>'; }
+    else {
+      var thisWk = wKey();
+      list.innerHTML = wks.slice().reverse().map(function(wk){
+        var isThis = wk===thisWk;
+        return '<label class="wkrow"><input type="checkbox" value="'+wk+'"'+(isThis?' checked':'')+'> '+rangeLabel(wk)+(isThis?' <span class="thistag">this week</span>':'')+'</label>';
+      }).join("");
+    }
+    document.getElementById("expAll").textContent = "Select all";
+    modal.style.display = "flex";
+  }
+  function closeExport(){ modal.style.display = "none"; }
+  document.getElementById("export").addEventListener("click", openExport);
+  document.getElementById("expCancel").addEventListener("click", closeExport);
+  modal.addEventListener("click", function(e){ if(e.target===modal) closeExport(); });
+  document.getElementById("expAll").addEventListener("click", function(){
+    var boxes = modal.querySelectorAll('#wklist input[type=checkbox]');
+    var allOn = Array.prototype.every.call(boxes, function(b){return b.checked;});
+    Array.prototype.forEach.call(boxes, function(b){ b.checked = !allOn; });
+    this.textContent = allOn ? "Select all" : "Select none";
+  });
+  document.getElementById("expGo").addEventListener("click", function(){
+    var sel = Array.prototype.map.call(modal.querySelectorAll('#wklist input:checked'), function(b){return b.value;});
+    if(!sel.length){ return; }
+    deliverCSV(buildCSV(sel));
+    closeExport();
   });
 
   document.getElementById("prev").addEventListener("click",function(){ weekStart=addDays(weekStart,-7); resetConfirm(); render(); });
