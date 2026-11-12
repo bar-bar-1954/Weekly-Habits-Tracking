@@ -15,9 +15,6 @@
     --accent: #6aa6a1;
     --accent-soft: #e3f0ee;
     --today: #fbf3e6;
-    --eat-h: #6aa6a1;
-    --eat-r: #e0a13c;
-    --eat-i: #b07a9e;
     --heart: #8b5cc7;
     --shadow: 0 1px 3px rgba(0,0,0,.05), 0 6px 18px rgba(0,0,0,.04);
   }
@@ -77,9 +74,6 @@
     font-size: .85rem; font-weight: 800; color: var(--muted); transition: transform .08s;
   }
   .eat:active { transform: scale(.88); }
-  .eat.H { background: var(--eat-h); border-color: var(--eat-h); color: #fff; }
-  .eat.R { background: var(--eat-r); border-color: var(--eat-r); color: #fff; }
-  .eat.I { background: var(--eat-i); border-color: var(--eat-i); color: #fff; }
 
   .eat.multi { font-size: .58rem; font-weight: 800; letter-spacing: .5px; color: var(--muted); }
   .eat.multi.on { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -168,12 +162,7 @@
     </div>
   </div>
 
-  <div class="legend" id="legend" style="display:none">
-    <span><i class="dot" style="background:var(--eat-h)"></i> Habit</span>
-    <span><i class="dot" style="background:var(--eat-r)"></i> Rebelling</span>
-    <span><i class="dot" style="background:var(--eat-i)"></i> Feeling isolated</span>
-    <span>Clearing: F = Freeform writing · C = CKT · S = Seeding</span>
-  </div>
+  <div class="legend" id="legend" style="display:none"></div>
 
   <div class="progwrap">
     <div class="progtop">
@@ -233,16 +222,15 @@
   var STORE = "habitTrackerV2";
   var DOW = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
   var MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  var EAT_CYCLE = ["", "H", "R", "I"];
   var DEFAULT_HABITS = [
-    { id: "ice",      name: "Ice arm and hips",  type: "num"   },
+    { id: "ice",      name: "Ice heat hips knee", type: "multi", options: [{k:"I",label:"Iced"},{k:"H",label:"Heat"}] },
     { id: "breathe",  name: "Breathe",  type: "check" },
-    { id: "eating",   name: "Eating",   type: "eat"   },
     { id: "pt",       name: "PT",       type: "check" },
     { id: "exercise", name: "Exercise mins", type: "num"   },
-    { id: "cpap",     name: "CPAP #",        type: "num"   },
+    { id: "cpap",     name: "Sleep (Hrs/CPAP#)", type: "num"   },
     { id: "innerphasing", name: "Innerphasing", type: "num" },
-    { id: "ffwriting", name: "Clearing", type: "multi", options: [{k:"F",label:"Freeform writing"},{k:"C",label:"CKT"},{k:"S",label:"Seeding"}] }
+    { id: "ffwriting", name: "Clearing", type: "multi", options: [{k:"C",label:"CKT"},{k:"S",label:"Seeding"},{k:"L",label:"Light Body"}] },
+    { id: "unplugged", name: "Unplugged activity", type: "multi", options: [{k:"W",label:"Walked"},{k:"P",label:"Painting"},{k:"O",label:"Other"}] }
   ];
 
   function startOfWeek(d) { var x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); var day = (x.getDay()+6)%7; x.setDate(x.getDate()-day); return x; }
@@ -256,27 +244,35 @@
     if (!Array.isArray(o.habits) || !o.habits.length) o.habits = DEFAULT_HABITS.map(function(h){return {id:h.id,name:h.name,type:h.type,options:h.options};});
     if (!o.weeks || typeof o.weeks !== "object") o.weeks = {};
     o.habits.forEach(function(h){
-      if (h.id==="ice" && h.type!=="num") h.type="num";
-      if (h.id==="ice" && h.name==="Ice arm") h.name="Ice arm and hips";
+      if (h.id==="ice"){
+        h.type="multi";
+        h.options=[{k:"I",label:"Iced"},{k:"H",label:"Heat"}];
+        if (h.name==="Ice arm" || h.name==="Ice arm and hips" || h.name==="Ice heat hips and knee") h.name="Ice heat hips knee";
+      }
       if (h.id==="exercise" && h.name==="Exercise") h.name="Exercise mins";
       if (h.id==="exercise" && h.type!=="num") h.type="num";
-      if (h.id==="cpap" && h.name==="CPAP") h.name="CPAP #";
+      if (h.id==="cpap" && (h.name==="CPAP" || h.name==="CPAP #")) h.name="Sleep (Hrs/CPAP#)";
       if (h.id==="innerphasing" && h.type!=="num") h.type="num";
       if (h.id==="ffwriting"){
         if (h.name==="FF writing") h.name="Clearing";
         h.type="multi";
-        if (!h.options) h.options=[{k:"F",label:"Freeform writing"},{k:"C",label:"CKT"},{k:"S",label:"Seeding"}];
+        h.options=[{k:"C",label:"CKT"},{k:"S",label:"Seeding"},{k:"L",label:"Light Body"}];
       }
     });
     if (!o.habits.some(function(h){return h.id==="innerphasing";}))
       o.habits.push({ id:"innerphasing", name:"Innerphasing", type:"num" });
-    o.habits = o.habits.filter(function(h){ return h.id!=="icehips"; });
+    o.habits = o.habits.filter(function(h){ return h.id!=="icehips" && h.id!=="eating"; });
     if (!o.habits.some(function(h){return h.id==="ffwriting";}))
-      o.habits.push({ id:"ffwriting", name:"Clearing", type:"multi", options:[{k:"F",label:"Freeform writing"},{k:"C",label:"CKT"},{k:"S",label:"Seeding"}] });
+      o.habits.push({ id:"ffwriting", name:"Clearing", type:"multi", options:[{k:"C",label:"CKT"},{k:"S",label:"Seeding"},{k:"L",label:"Light Body"}] });
+    if (!o.habits.some(function(h){return h.id==="unplugged";}))
+      o.habits.push({ id:"unplugged", name:"Unplugged activity", type:"multi", options:[{k:"W",label:"Walked"},{k:"P",label:"Painting"},{k:"O",label:"Other"}] });
     Object.keys(o.weeks).forEach(function(wk){
       var vals = o.weeks[wk].values || {};
       Object.keys(vals).forEach(function(k){
         if ((k.indexOf("ice_")===0 || k.indexOf("exercise_")===0 || k.indexOf("innerphasing_")===0 || k.indexOf("ffwriting_")===0) && typeof vals[k]==="boolean") delete vals[k];
+        if (k.indexOf("ice_")===0 && typeof vals[k]==="number") delete vals[k];
+        if (k.indexOf("eating_")===0) delete vals[k];
+        if (k.indexOf("ffwriting_")===0 && typeof vals[k]==="string"){ var nv=vals[k].replace(/F/g,""); if(nv) vals[k]=nv; else delete vals[k]; }
       });
     });
     return o;
@@ -325,19 +321,7 @@
         var k = habit.id+"_"+d;
         var v = w.values[k];
 
-        if (habit.type==="eat"){
-          var e = document.createElement("div");
-          e.className = "eat"+(v?(" "+v):"");
-          e.textContent = v || "";
-          e.title = "Habit / Rebelling / Feeling isolated";
-          (function(k,e){ e.addEventListener("click",function(){
-            var wk=week(); var cur=wk.values[k]||""; var idx=(EAT_CYCLE.indexOf(cur)+1)%EAT_CYCLE.length; var nv=EAT_CYCLE[idx];
-            if(nv) wk.values[k]=nv; else delete wk.values[k];
-            saveAll(data); e.className="eat"+(nv?(" "+nv):""); e.textContent=nv||""; updateProgress();
-          });})(k,e);
-          col.appendChild(e);
-
-        } else if (habit.type==="multi"){
+        if (habit.type==="multi"){
           var mm = document.createElement("div");
           mm.className = "eat multi"+(v?" on":"");
           mm.textContent = v || "";
@@ -379,8 +363,18 @@
     document.getElementById("weeklabel").textContent = lbl;
 
     document.getElementById("reflect").value = w.notes || "";
-    document.getElementById("legend").style.display = data.habits.some(function(h){return h.type==="eat"||h.type==="multi";}) ? "flex" : "none";
+    renderLegend();
     updateProgress();
+  }
+
+  function renderLegend(){
+    var el = document.getElementById("legend");
+    var multis = data.habits.filter(function(h){ return h.type==="multi" && h.options && h.options.length; });
+    if(!multis.length){ el.style.display = "none"; el.innerHTML = ""; return; }
+    el.innerHTML = multis.map(function(h){
+      return '<span><b>'+h.name+':</b> '+h.options.map(function(o){return o.k+" = "+o.label;}).join(" · ")+'</span>';
+    }).join("");
+    el.style.display = "flex";
   }
 
   function updateProgress(){
@@ -428,7 +422,7 @@
   });
   multiModal.addEventListener("click", function(e){ if(e.target===multiModal) multiModal.style.display="none"; });
 
-  function typeLabel(t){ return t==="eat"?"3-way":(t==="num"?"number":(t==="multi"?"multi-pick":"checkbox")); }
+  function typeLabel(t){ return t==="num"?"number":(t==="multi"?"multi-pick":"checkbox"); }
   function renderEditor(){
     var box = document.getElementById("erows"); box.innerHTML="";
     data.habits.forEach(function(habit){
@@ -454,7 +448,7 @@
     editing = !editing;
     document.getElementById("grid").style.display = editing?"none":"grid";
     document.getElementById("editor").style.display = editing?"block":"none";
-    document.getElementById("legend").style.display = (!editing && data.habits.some(function(h){return h.type==="eat"||h.type==="multi";}))?"flex":"none";
+    if (editing) document.getElementById("legend").style.display = "none"; else renderLegend();
     this.textContent = editing? "✓ Done" : "✎ Edit habits";
     if (editing) renderEditor(); else render();
   });
